@@ -1,0 +1,155 @@
+---
+title: "Untitled"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Librerias
+```{r}
+library(psych)
+library(dplyr)
+library(stringr)
+library(datasets.load)
+library(tidyverse)
+library(tm)
+library(tidytext)
+library(quanteda)
+library(quanteda.textstats)
+library(ggplot2)
+library(wordcloud)
+library(lubridate)
+library(readxl)
+library(chron)
+library(factoextra)
+library(flexclust)
+library(cluster)
+library(ggdendro)
+library(factoextra)
+library(knitr)
+library(mclust)
+library(dbscan)
+library(e1071)
+```
+##cargamos los datos 
+
+```{r}
+setwd("C:/Users/Dieca/OneDrive/Escritorio/actividad 8")
+beats2 <- read.csv("beats2.csv", sep = ",")
+
+```
+## Comprobar Datos NA y Cambiar Tipo Data
+```{r}
+beats2 %>% 
+  summarise_all(funs(sum(is.na(.))))
+str(beats2)
+
+```
+- Segundo filtrar y remover datos duplicados
+```{r limpieza duplicados}
+beats2 <- beats2[!duplicated(beats2$track_id),]
+
+```
+- Tercero, Seguimos con la limpieza
+Separamos las variables numéricas y char dos dataframes distintos
+
+```{r}
+beats2_char <- c("artist_name", "artist_id", "album_id", "album_type", "album_release_date", "album_release_date_precision", "track_id", "analysis_url", "track_href", "track_name", "track_preview_url", "type", "track_uri", "external_urls.spotify", "album_name", "key_name", "mode_name", "key_mode")
+beats2_num <- c("danceability", "energy", "key", "loudness", "mode", "speechiness", "acousticness", "instrumentalness", "liveness", "valence", "tempo", "duration_ms")
+beats2 <- beats2 %>% 
+  filter(!(is.na(key)|is.na(danceability)))
+summary(beats2)
+str(beats2)
+
+
+```
+
+## Separo Datos
+```{r separar datos}
+beats2num <- beats2 %>% 
+  select(beats2_num)
+beats2char <- beats2 %>% 
+  select(beats2_char)
+```
+
+## Escalar Datos
+```{r escalar datos}
+beats2_sca <- sapply(beats2num, scale) %>% as_tibble()
+beats2_sca %>% summary()
+```
+
+##DBSCAN
+primer metodo cluster por densidad 
+
+```{r}
+set.seed(369)
+model = dbscan(beats2_sca, eps = 1, minPts = 6)
+
+model
+# El modelo genera 74 cluster
+```
+
+## Plot 
+
+```{r}
+ggplot(beats2_sca, aes(danceability, energy, color = factor(model$cluster), size =danceability )) + 
+  geom_point(alpha = 0.3)
+```
+
+## C means
+
+```{r}
+set.seed(369)
+
+modelo_c_means <- cmeans(beats2_sca,  7, m=2) 
+
+modelo_c_means$membership %>% head()
+#El algoritmo cmeans asigna como cluster al que tenga mayor probabilidad
+```
+
+## PLOT
+```{r}
+
+ggplot(beats2_sca, aes(danceability,energy , color = factor(modelo_c_means$cluster), size = danceability)) + 
+  geom_point(alpha = 0.3)
+```
+
+##FCP
+```{r}
+
+matriz <- modelo_c_means$membership%*%t(modelo_c_means$membership) # producto matricial
+
+(FPC <- sum(matriz*diag(nrow(matriz)))/nrow(matriz))
+#El valor del FPC es bajo, lo que significa que los grupos tienen alta variabilidad, y se puede confirmar en la figura ya que no se ven grupos definidos.
+```
+##GMM
+
+```{r}
+library(mclust)
+
+set.seed(369)
+
+model_gmm = Mclust(beats2_sca)
+
+model_gmm 
+summary(model_gmm, parameters = TRUE)
+```
+
+##GGPLOT
+```{r}
+ggplot(beats2_sca) + 
+  aes(x=danceability, y=energy, color=factor(model_gmm$classification)) + 
+  geom_point(alpha=1)
+```
+
+##Cluster plot
+```{r}
+fviz_cluster(model_gmm, beats2_sca, stand = FALSE, frame = FALSE,geom = "point")
+```
+
+## BIC
+```{r}
+plot(model_gmm, what = "BIC")
+```
